@@ -10,13 +10,13 @@ How the pieces fit together — the two pipelines, the shared analysis context, 
 
 ```bash
 # Run directly (no install)
-uvx --from git+https://github.com/borwickatuw/pysmelly pysmelly
+uvx --from git+https://github.com/UW-Digital-Strategies/pysmelly pysmelly
 
 # Or install as a tool
-uv tool install git+https://github.com/borwickatuw/pysmelly
+uv tool install git+https://github.com/UW-Digital-Strategies/pysmelly
 
 # Or pip
-pip install git+https://github.com/borwickatuw/pysmelly
+pip install git+https://github.com/UW-Digital-Strategies/pysmelly
 ```
 
 ## Releases
@@ -769,9 +769,17 @@ The output is shaped so that "the code works" is not an answer to a finding:
 ## Requirements
 
 - Python 3.12+
-- No external dependencies (stdlib only)
+- Runtime dependencies: `[project] dependencies` in `pyproject.toml` (Click)
 - Calls `git` (via subprocess, not shell) for `.gitignore`-aware file discovery, `--diff` mode, `--compare` (a temporary `git worktree`), and version detection. Falls back gracefully when `git` is not available.
 
 ## License
 
-BSD-3-Clause
+BSD-3-Clause; see [LICENSE](LICENSE).
+
+Every dependency an install pulls in is permissively licensed. Copyleft
+(GPL, LGPL) is confined to the dev-group tooling, which an install never
+pulls in. Re-derive the installed set's licenses with:
+
+```bash
+uv run --isolated --no-default-groups --with pip-licenses pip-licenses
+```

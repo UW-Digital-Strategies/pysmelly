@@ -576,15 +576,19 @@ def _workspace_member_repo(repo: Path, build_source: str) -> None:
     """
     pkg = repo / "home" / "src" / "myproj_home"
     pkg.mkdir(parents=True)
-    (repo / "pyproject.toml").write_text('[tool.uv.workspace]\nmembers = ["home"]\n')
-    (repo / "home" / "pyproject.toml").write_text('[project]\nname = "myproj-home"\n')
-    (pkg / "__init__.py").write_text("")
+    (repo / "pyproject.toml").write_text(
+        '[tool.uv.workspace]\nmembers = ["home"]\n', encoding="utf-8"
+    )
+    (repo / "home" / "pyproject.toml").write_text(
+        '[project]\nname = "myproj-home"\n', encoding="utf-8"
+    )
+    (pkg / "__init__.py").write_text("", encoding="utf-8")
     for i in range(6):
-        (pkg / "config.py").write_text(f"x = {i}\n")
-        (pkg / "build.py").write_text(f"{build_source}\ny = {i}\n")
+        (pkg / "config.py").write_text(f"x = {i}\n", encoding="utf-8")
+        (pkg / "build.py").write_text(f"{build_source}\ny = {i}\n", encoding="utf-8")
         _git(repo, "add", ".")
         _git(repo, "commit", "-m", f"feat: build step {i}")
-    (pkg / "config.py").write_text("x = 99\n")
+    (pkg / "config.py").write_text("x = 99\n", encoding="utf-8")
     _git(repo, "add", ".")
     _git(repo, "commit", "-m", "feat: config alone")
 
@@ -782,7 +786,7 @@ class TestConsciousDebt:
         files = {"models/cache.py": "x = 1"}
         commits = [
             CommitInfo(
-                hash="a1b2c3d4e5f6",
+                hash="debt0000",
                 date=_RECENT,
                 message="Add temporary workaround for rate limiting",
                 files=["models/cache.py"],

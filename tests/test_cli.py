@@ -3,6 +3,7 @@
 import hashlib
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -41,7 +42,7 @@ class TestVersion:
 class TestCLI:
     def test_clean_exit_code(self, tmp_path, capsys):
         """Exit 0 when no findings."""
-        (tmp_path / "clean.py").write_text("x = 1\n")
+        (tmp_path / "clean.py").write_text("x = 1\n", encoding="utf-8")
         try:
             main(["--min-severity", "high", str(tmp_path)])
         except SystemExit as e:
@@ -51,7 +52,7 @@ class TestCLI:
 
     def test_findings_exit_code(self, tmp_path):
         """Exit 1 when findings exist."""
-        (tmp_path / "dead.py").write_text("def unused_func():\n    pass\n")
+        (tmp_path / "dead.py").write_text("def unused_func():\n    pass\n", encoding="utf-8")
         try:
             main([str(tmp_path)])
         except SystemExit as e:
@@ -59,7 +60,8 @@ class TestCLI:
 
     def test_min_severity_filters(self, tmp_path, capsys):
         """--min-severity high filters out medium and low findings."""
-        (tmp_path / "example.py").write_text("""\
+        (tmp_path / "example.py").write_text(
+            """\
 def unused_func():
     pass
 
@@ -68,7 +70,9 @@ def used():
 
 used()
 used()
-""")
+""",
+            encoding="utf-8",
+        )
         # With --min-severity high, should see dead-code but not internal-only
         try:
             main(["--no-context", "--min-severity", "high", str(tmp_path)])
@@ -80,7 +84,7 @@ used()
 
     def test_check_flag_runs_single_check(self, tmp_path, capsys):
         """--check runs only the specified check."""
-        (tmp_path / "example.py").write_text("def unused_func():\n    pass\n")
+        (tmp_path / "example.py").write_text("def unused_func():\n    pass\n", encoding="utf-8")
         try:
             main(["--no-context", "--check", "dead-code", str(tmp_path)])
         except SystemExit:
@@ -90,7 +94,7 @@ used()
 
     def test_skip_flag_excludes_check(self, tmp_path, capsys):
         """--skip excludes the specified check."""
-        (tmp_path / "example.py").write_text("def unused_func():\n    pass\n")
+        (tmp_path / "example.py").write_text("def unused_func():\n    pass\n", encoding="utf-8")
         try:
             main(["--no-context", "--skip", "dead-code", str(tmp_path)])
         except SystemExit:
@@ -112,7 +116,7 @@ used()
         """Output uses paths relative to the target directory."""
         sub = tmp_path / "pkg"
         sub.mkdir()
-        (sub / "mod.py").write_text("def unused_func():\n    pass\n")
+        (sub / "mod.py").write_text("def unused_func():\n    pass\n", encoding="utf-8")
         try:
             main(["--no-context", str(tmp_path)])
         except SystemExit:
@@ -124,8 +128,8 @@ used()
 
     def test_exclude_pattern(self, tmp_path, capsys):
         """--exclude filters out matching files."""
-        (tmp_path / "app.py").write_text("def unused_func():\n    pass\n")
-        (tmp_path / "test_app.py").write_text("def another_unused():\n    pass\n")
+        (tmp_path / "app.py").write_text("def unused_func():\n    pass\n", encoding="utf-8")
+        (tmp_path / "test_app.py").write_text("def another_unused():\n    pass\n", encoding="utf-8")
         try:
             main(["--no-context", "--exclude", "test_*", str(tmp_path)])
         except SystemExit:
@@ -138,10 +142,10 @@ used()
         """--exclude with trailing / excludes entire directories."""
         src = tmp_path / "src"
         src.mkdir()
-        (src / "app.py").write_text("def unused_func():\n    pass\n")
+        (src / "app.py").write_text("def unused_func():\n    pass\n", encoding="utf-8")
         lam = tmp_path / "modules" / "auth" / "lambda"
         lam.mkdir(parents=True)
-        (lam / "handler.py").write_text("def lambda_handler():\n    pass\n")
+        (lam / "handler.py").write_text("def lambda_handler():\n    pass\n", encoding="utf-8")
         try:
             main(["--no-context", "--exclude", "modules/*/lambda/", str(tmp_path)])
         except SystemExit:
@@ -154,8 +158,8 @@ used()
         """--exclude with / in pattern matches full relative path."""
         sub = tmp_path / "vendor" / "lib"
         sub.mkdir(parents=True)
-        (sub / "mod.py").write_text("def vendored():\n    pass\n")
-        (tmp_path / "app.py").write_text("def unused_func():\n    pass\n")
+        (sub / "mod.py").write_text("def vendored():\n    pass\n", encoding="utf-8")
+        (tmp_path / "app.py").write_text("def unused_func():\n    pass\n", encoding="utf-8")
         try:
             main(["--no-context", "--exclude", "vendor/lib/*.py", str(tmp_path)])
         except SystemExit:
@@ -170,8 +174,8 @@ used()
         dir_b = tmp_path / "b"
         dir_a.mkdir()
         dir_b.mkdir()
-        (dir_a / "mod_a.py").write_text("def unused_a():\n    pass\n")
-        (dir_b / "mod_b.py").write_text("def unused_b():\n    pass\n")
+        (dir_a / "mod_a.py").write_text("def unused_a():\n    pass\n", encoding="utf-8")
+        (dir_b / "mod_b.py").write_text("def unused_b():\n    pass\n", encoding="utf-8")
         try:
             main(["--no-context", str(dir_a), str(dir_b)])
         except SystemExit:
@@ -184,7 +188,7 @@ used()
     def test_inline_suppression(self, tmp_path, capsys):
         """# pysmelly: ignore suppresses findings."""
         (tmp_path / "suppressed.py").write_text(
-            "def unused_func():  # pysmelly: ignore\n    pass\n"
+            "def unused_func():  # pysmelly: ignore\n    pass\n", encoding="utf-8"
         )
         try:
             main(["--no-context", str(tmp_path)])
@@ -196,7 +200,7 @@ used()
     def test_inline_suppression_specific_check(self, tmp_path, capsys):
         """# pysmelly: ignore[check-name] suppresses only that check."""
         (tmp_path / "specific.py").write_text(
-            "def unused_func():  # pysmelly: ignore[dead-code]\n    pass\n"
+            "def unused_func():  # pysmelly: ignore[dead-code]\n    pass\n", encoding="utf-8"
         )
         try:
             main(["--no-context", str(tmp_path)])
@@ -208,7 +212,7 @@ used()
     def test_inline_suppression_line_above(self, tmp_path, capsys):
         """Suppression comment on the line above also works."""
         (tmp_path / "above.py").write_text(
-            "# pysmelly: ignore[dead-code]\ndef unused_func():\n    pass\n"
+            "# pysmelly: ignore[dead-code]\ndef unused_func():\n    pass\n", encoding="utf-8"
         )
         try:
             main(["--no-context", str(tmp_path)])
@@ -228,8 +232,10 @@ used()
 
     def test_exclude_test_no_per_finding_annotation(self, tmp_path, capsys):
         """--exclude test_* does not annotate individual findings (guidance banner suffices)."""
-        (tmp_path / "app.py").write_text("def unused_func():\n    pass\n")
-        (tmp_path / "test_app.py").write_text("from app import unused_func\nunused_func()\n")
+        (tmp_path / "app.py").write_text("def unused_func():\n    pass\n", encoding="utf-8")
+        (tmp_path / "test_app.py").write_text(
+            "from app import unused_func\nunused_func()\n", encoding="utf-8"
+        )
         try:
             main(["--no-context", "--exclude", "test_*", str(tmp_path)])
         except SystemExit:
@@ -241,7 +247,7 @@ used()
     def test_context_shows_init_hint_when_no_pysmelly_md(self, tmp_path, capsys, monkeypatch):
         """Guidance preamble suggests pysmelly init when PYSMELLY.md is missing."""
         monkeypatch.chdir(tmp_path)
-        (tmp_path / "app.py").write_text("def unused_func():\n    pass\n")
+        (tmp_path / "app.py").write_text("def unused_func():\n    pass\n", encoding="utf-8")
         try:
             main(["--exclude", "test_*", str(tmp_path)])
         except SystemExit:
@@ -252,7 +258,7 @@ used()
 
     def test_no_context_suppresses_guidance(self, tmp_path, capsys):
         """--no-context suppresses the guidance preamble."""
-        (tmp_path / "app.py").write_text("def unused_func():\n    pass\n")
+        (tmp_path / "app.py").write_text("def unused_func():\n    pass\n", encoding="utf-8")
         try:
             main(["--no-context", str(tmp_path)])
         except SystemExit:
@@ -262,13 +268,13 @@ used()
 
     def test_git_history_check_via_main_not_allowed(self, tmp_path, capsys):
         """abandoned-code is not a valid --check in main command."""
-        (tmp_path / "app.py").write_text("x = 1\n")
+        (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
         with pytest.raises(SystemExit):
             main(["--check", "abandoned-code", str(tmp_path)])
 
     def test_git_history_subcommand_without_git_repo_errors(self, tmp_path, capsys):
         """git-history subcommand without git repo -> error exit."""
-        (tmp_path / "app.py").write_text("x = 1\n")
+        (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
         with pytest.raises(SystemExit) as exc_info:
             main(["git-history", str(tmp_path)])
         assert exc_info.value.code == 1
@@ -287,7 +293,7 @@ used()
 
     def test_git_history_subcommand_on_real_repo(self, git_repo, capsys):
         """git-history subcommand exits clean on a repo with nothing to flag."""
-        (git_repo / "app.py").write_text("x = 1\n")
+        (git_repo / "app.py").write_text("x = 1\n", encoding="utf-8")
         subprocess.run(["git", "add", "app.py"], cwd=git_repo, capture_output=True, check=True)
         subprocess.run(
             ["git", "commit", "-m", "initial"],
@@ -315,7 +321,7 @@ used()
 
     def test_git_history_checks_excluded_from_main(self, git_repo, capsys):
         """Main command excludes git-history checks."""
-        (git_repo / "app.py").write_text("def unused_func():\n    pass\n")
+        (git_repo / "app.py").write_text("def unused_func():\n    pass\n", encoding="utf-8")
         subprocess.run(["git", "add", "app.py"], cwd=git_repo, capture_output=True, check=True)
         subprocess.run(
             ["git", "commit", "-m", "initial"],
@@ -332,7 +338,7 @@ used()
 
     def test_reviewed_creates_commit(self, git_repo):
         """pysmelly git-history reviewed creates an empty commit with markers."""
-        (git_repo / "old.py").write_text("x = 1\n")
+        (git_repo / "old.py").write_text("x = 1\n", encoding="utf-8")
         subprocess.run(["git", "add", "old.py"], cwd=git_repo, capture_output=True, check=True)
         subprocess.run(
             ["git", "commit", "-m", "initial"],
@@ -358,15 +364,15 @@ used()
             ["git", "log", "-1", "--format=%B"],
             cwd=git_repo,
             capture_output=True,
-            text=True,
+            encoding="utf-8",
             check=True,
         )
         assert "pysmelly: reviewed old.py" in result.stdout
 
     def test_reviewed_multiple_files(self, git_repo):
         """pysmelly git-history reviewed accepts multiple files."""
-        (git_repo / "a.py").write_text("x = 1\n")
-        (git_repo / "b.py").write_text("y = 2\n")
+        (git_repo / "a.py").write_text("x = 1\n", encoding="utf-8")
+        (git_repo / "b.py").write_text("y = 2\n", encoding="utf-8")
         subprocess.run(["git", "add", "."], cwd=git_repo, capture_output=True, check=True)
         subprocess.run(
             ["git", "commit", "-m", "initial"],
@@ -390,7 +396,7 @@ used()
             ["git", "log", "-1", "--format=%B"],
             cwd=git_repo,
             capture_output=True,
-            text=True,
+            encoding="utf-8",
             check=True,
         )
         assert "pysmelly: reviewed a.py" in result.stdout
@@ -432,7 +438,7 @@ class TestCheckSelectionIsRepeatable:
     SOURCE = 'UNUSED_CONSTANT = "nobody references me"\n\n\ndef unused_func():\n    pass\n'
 
     def _run(self, tmp_path, capsys, args):
-        (tmp_path / "example.py").write_text(self.SOURCE)
+        (tmp_path / "example.py").write_text(self.SOURCE, encoding="utf-8")
         try:
             main(["--no-context", "--more-please", *args, str(tmp_path)])
         except SystemExit:
@@ -458,7 +464,7 @@ class TestCheckSelectionIsRepeatable:
 
     def test_unknown_check_name_still_fails_fast(self, tmp_path, capsys):
         """An unknown name in a repeated selection is still rejected."""
-        (tmp_path / "example.py").write_text(self.SOURCE)
+        (tmp_path / "example.py").write_text(self.SOURCE, encoding="utf-8")
         with pytest.raises(SystemExit) as exc:
             main(["--check", "dead-code", "--check", "no-such-check", str(tmp_path)])
         assert exc.value.code == 2
@@ -466,7 +472,7 @@ class TestCheckSelectionIsRepeatable:
 
     def test_git_history_check_is_repeatable_too(self, git_repo, capsys):
         """The history subcommand takes a union as well."""
-        (git_repo / "app.py").write_text("x = 1\n")
+        (git_repo / "app.py").write_text("x = 1\n", encoding="utf-8")
         subprocess.run(["git", "add", "app.py"], cwd=git_repo, capture_output=True, check=True)
         subprocess.run(
             ["git", "commit", "-m", "initial"],
@@ -516,7 +522,7 @@ class TestInit:
             main(["init", str(target)])
         except SystemExit:
             pass
-        content = target.read_text()
+        content = target.read_text(encoding="utf-8")
         assert "pysmelly-guidance" in content
         assert "Code Smell Review Guide" in content
         assert "How to act on AST findings" in content
@@ -530,7 +536,7 @@ class TestInit:
             main(["init", "--short", str(target)])
         except SystemExit:
             pass
-        content = target.read_text()
+        content = target.read_text(encoding="utf-8")
         assert "pysmelly-guidance" in content
         assert "(Short)" in content
         assert "How to act on AST findings" not in content
@@ -544,7 +550,7 @@ class TestInit:
                 main(["init", "--short"])
             except SystemExit:
                 pass
-            content = (tmp_path / "PYSMELLY.md").read_text()
+            content = (tmp_path / "PYSMELLY.md").read_text(encoding="utf-8")
             assert "(Short)" in content
         finally:
             os.chdir(prev)
@@ -558,7 +564,7 @@ class TestInit:
                 main(["init"])
             except SystemExit:
                 pass
-            claude_md = (tmp_path / "CLAUDE.md").read_text()
+            claude_md = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
             assert "pysmelly" in claude_md
             assert "PYSMELLY.md" in claude_md
         finally:
@@ -570,14 +576,14 @@ class TestInit:
         try:
             os.chdir(tmp_path)
             (tmp_path / "CLAUDE.md").write_text(
-                "# proj\n\n`make pysmelly` runs the pysmelly design-smell scan.\n"
+                "# proj\n\n`make pysmelly` runs the pysmelly design-smell scan.\n", encoding="utf-8"
             )
             (tmp_path / "docs").mkdir()
             try:
                 main(["init", "--short", "docs/PYSMELLY.md"])
             except SystemExit:
                 pass
-            claude_md = (tmp_path / "CLAUDE.md").read_text()
+            claude_md = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
             assert "Read [docs/PYSMELLY.md](docs/PYSMELLY.md) before running pysmelly" in claude_md
         finally:
             os.chdir(prev)
@@ -595,7 +601,7 @@ class TestInit:
                 main(["init"])
             except SystemExit:
                 pass
-            claude_md = (tmp_path / "CLAUDE.md").read_text()
+            claude_md = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
             assert claude_md.count("## pysmelly") == 1
         finally:
             os.chdir(prev)
@@ -611,7 +617,7 @@ class TestGuidanceStaleness:
                 main(["init"])
             except SystemExit:
                 pass
-            (tmp_path / "app.py").write_text("x = 1\n")
+            (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
             try:
                 main(["--min-severity", "high", str(tmp_path)])
             except SystemExit:
@@ -630,7 +636,7 @@ class TestGuidanceStaleness:
                 main(["init", "--short"])
             except SystemExit:
                 pass
-            (tmp_path / "app.py").write_text("x = 1\n")
+            (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
             try:
                 main(["--min-severity", "high", str(tmp_path)])
             except SystemExit:
@@ -653,7 +659,7 @@ class TestGuidanceStaleness:
                 pass
             # PYSMELLY.md should NOT exist at root
             assert not (tmp_path / "PYSMELLY.md").exists()
-            (tmp_path / "app.py").write_text("x = 1\n")
+            (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
             try:
                 main(["--min-severity", "high", str(tmp_path)])
             except SystemExit:
@@ -669,8 +675,10 @@ class TestGuidanceStaleness:
         prev = os.getcwd()
         try:
             os.chdir(tmp_path)
-            (tmp_path / "PYSMELLY.md").write_text("<!-- pysmelly-guidance badhash -->\nold")
-            (tmp_path / "app.py").write_text("x = 1\n")
+            (tmp_path / "PYSMELLY.md").write_text(
+                "<!-- pysmelly-guidance badhash -->\nold", encoding="utf-8"
+            )
+            (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
             try:
                 main(["--min-severity", "high", str(tmp_path)])
             except SystemExit:
@@ -768,7 +776,7 @@ class TestInitPreservesExtendedFile:
         self._init("--short", "docs/PYSMELLY.md")
         target = tmp_path / "docs" / "PYSMELLY.md"
         target.write_text(target.read_text(encoding="utf-8") + REGISTER_TAIL, encoding="utf-8")
-        (tmp_path / "app.py").write_text("x = 1\n")
+        (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
         capsys.readouterr()
         with pytest.raises(SystemExit):
             main(["--min-severity", "high", str(tmp_path)])
@@ -801,7 +809,7 @@ class TestInitPreservesExtendedFile:
         target.parent.mkdir()
         target.write_bytes(existing.encode())
         claude_md = tmp_path / "CLAUDE.md"
-        claude_md.write_text("# proj\n")
+        claude_md.write_text("# proj\n", encoding="utf-8")
 
         assert self._init("--short", "docs/PYSMELLY.md") == 1
 
@@ -811,10 +819,10 @@ class TestInitPreservesExtendedFile:
         assert "nothing was written" in err
         assert reason in err
         assert target.read_bytes() == existing.encode()
-        assert claude_md.read_text() == "# proj\n"
+        assert claude_md.read_text(encoding="utf-8") == "# proj\n"
 
     def test_refusal_creates_no_claude_md(self, tmp_path):
-        (tmp_path / "PYSMELLY.md").write_text("hand-written\n")
+        (tmp_path / "PYSMELLY.md").write_text("hand-written\n", encoding="utf-8")
         assert self._init() == 1
         assert not (tmp_path / "CLAUDE.md").exists()
 
@@ -992,7 +1000,7 @@ class TestInitRecoversPreEndMarkerFile:
         target.parent.mkdir()
         target.write_bytes(existing.encode())
         claude_md = tmp_path / "CLAUDE.md"
-        claude_md.write_text("# proj\n")
+        claude_md.write_text("# proj\n", encoding="utf-8")
 
         assert self._init("--short", "docs/PYSMELLY.md") == 1
 
@@ -1002,7 +1010,7 @@ class TestInitRecoversPreEndMarkerFile:
         assert "nothing was written" in err
         assert "--force" in err
         assert target.read_bytes() == existing.encode()
-        assert claude_md.read_text() == "# proj\n"
+        assert claude_md.read_text(encoding="utf-8") == "# proj\n"
 
     def test_more_than_one_proven_end_is_ambiguous(self, monkeypatch):
         """Two line ends closing a prefix with the marker's hash prove nothing."""
@@ -1154,7 +1162,7 @@ class TestDiffRefFailsLoudly:
         env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@e"}
         env.update(GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@e")
         subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-        (tmp_path / "app.py").write_text("x = 1\n")
+        (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
         subprocess.run(["git", "add", "app.py"], cwd=tmp_path, check=True)
         subprocess.run(["git", "commit", "-qm", "init"], cwd=tmp_path, check=True, env=env)
 
@@ -1186,7 +1194,7 @@ class TestGuidanceUnreadable:
 
         monkeypatch.chdir(tmp_path)
         guidance = tmp_path / "PYSMELLY.md"
-        guidance.write_text("stub\n")
+        guidance.write_text("stub\n", encoding="utf-8")
         original = type(guidance).read_text
 
         def _boom(self, *args, **kwargs):
@@ -1260,7 +1268,7 @@ def _fleet_layout(root, claude_md_text):
     """A repo laid out like the fleet's: CLAUDE.md at the root, guidance in docs/."""
     (root / "CLAUDE.md").write_text(claude_md_text, encoding="utf-8")
     (root / "docs").mkdir()
-    (root / "app.py").write_text("x = 1\n")
+    (root / "app.py").write_text("x = 1\n", encoding="utf-8")
 
 
 class TestGuidanceReference:
@@ -1315,7 +1323,8 @@ class TestGuidanceReference:
         monkeypatch.chdir(tmp_path)
         (tmp_path / "CLAUDE.md").write_text(
             "Read [the overview](README.md) and [guidance](docs/PYSMELLY.md)\n"
-            "before running pysmelly.\n"
+            "before running pysmelly.\n",
+            encoding="utf-8",
         )
         with pytest.raises(UnparseableGuidanceReferenceError):
             _find_guidance_path()
@@ -1358,8 +1367,10 @@ class TestGuidanceReference:
         from pysmelly.cli import UnparseableGuidanceReferenceError, _find_guidance_path
 
         monkeypatch.chdir(tmp_path)
-        (tmp_path / "CLAUDE.md").write_text("See [register](docs/PYSMELLY.md).\n")
-        (tmp_path / "PYSMELLY.md").write_text("a root-level file must not be picked up\n")
+        (tmp_path / "CLAUDE.md").write_text("See [register](docs/PYSMELLY.md).\n", encoding="utf-8")
+        (tmp_path / "PYSMELLY.md").write_text(
+            "a root-level file must not be picked up\n", encoding="utf-8"
+        )
         with pytest.raises(UnparseableGuidanceReferenceError) as exc:
             _find_guidance_path()
         assert exc.value.link == "docs/PYSMELLY.md"
@@ -1369,6 +1380,32 @@ class TestGuidanceReference:
         from pysmelly.cli import _check_guidance_status, _find_guidance_path
 
         monkeypatch.chdir(tmp_path)
-        (tmp_path / "CLAUDE.md").write_text("# proj\n\n`make pysmelly` runs the scan.\n")
+        (tmp_path / "CLAUDE.md").write_text(
+            "# proj\n\n`make pysmelly` runs the scan.\n", encoding="utf-8"
+        )
         assert _find_guidance_path() == Path("PYSMELLY.md")
         assert "Run `pysmelly init`" in (_check_guidance_status() or "")
+
+
+class TestNonUtf8Locale:
+    """Output is UTF-8 even when the host's stream encoding is not."""
+
+    def test_non_ascii_finding_under_latin1_stdout(self, tmp_path):
+        """A Hangul filename and function name print instead of raising
+        UnicodeEncodeError. PYTHONIOENCODING stands in for a Latin-1 locale:
+        it sets the stream encoding the same way on every platform."""
+        (tmp_path / "한글.py").write_text(
+            "def 함수(x=None):\n    return x\n\n\ndef caller():\n    return 함수(x=1)\n",
+            encoding="utf-8",
+        )
+        env = {**os.environ, "PYTHONIOENCODING": "latin-1", "PYTHONUTF8": "0"}
+        result = subprocess.run(
+            [sys.executable, "-m", "pysmelly.cli", str(tmp_path)],
+            capture_output=True,
+            env=env,
+            check=False,
+        )
+        stderr = result.stderr.decode("utf-8")
+        assert "UnicodeEncodeError" not in stderr
+        assert result.returncode == 1  # findings, not a crash
+        assert "한글.py:1: [unused-defaults] 함수()" in result.stdout.decode("utf-8")

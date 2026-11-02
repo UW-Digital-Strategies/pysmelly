@@ -1,5 +1,7 @@
 """Tests for config file support."""
 
+import re
+
 import pytest
 
 from pysmelly.config import ConfigError, _validate_config, load_config
@@ -20,7 +22,9 @@ class TestLoadConfig:
 
     def test_warns_when_parent_has_config(self, tmp_path, capsys):
         """Warn if target dir has no config but a parent does."""
-        (tmp_path / "pyproject.toml").write_text('[tool.pysmelly]\nskip = ["dead-code"]\n')
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool.pysmelly]\nskip = ["dead-code"]\n', encoding="utf-8"
+        )
         src = tmp_path / "src"
         src.mkdir()
         result = load_config(src, VALID_CHECKS)
@@ -28,6 +32,14 @@ class TestLoadConfig:
         err = capsys.readouterr().err
         assert "no config in" in err
         assert "has pysmelly config" in err
+
+    def test_warns_when_parent_has_dotfile(self, tmp_path, capsys):
+        """A parent .pysmelly.toml warns by existing; the warning never parses it."""
+        (tmp_path / ".pysmelly.toml").write_text("skip = [\n", encoding="utf-8")
+        src = tmp_path / "src"
+        src.mkdir()
+        assert load_config(src, VALID_CHECKS) == {}
+        assert "has pysmelly config" in capsys.readouterr().err
 
     def test_no_warning_when_no_parent_config(self, tmp_path, capsys):
         """No warning when neither target nor parent has config."""
@@ -40,37 +52,43 @@ class TestLoadConfig:
 
     def test_dotfile_toml(self, tmp_path):
         (tmp_path / ".pysmelly.toml").write_text(
-            'exclude = ["tests/", "test_*"]\nskip = ["single-call-site"]\n'
+            'exclude = ["tests/", "test_*"]\nskip = ["single-call-site"]\n', encoding="utf-8"
         )
         result = load_config(tmp_path, VALID_CHECKS)
         assert result == {"exclude": ["tests/", "test_*"], "skip": ["single-call-site"]}
 
     def test_pyproject_toml(self, tmp_path):
         (tmp_path / "pyproject.toml").write_text(
-            '[tool.pysmelly]\nexclude = ["tests/"]\nmin-severity = "medium"\n'
+            '[tool.pysmelly]\nexclude = ["tests/"]\nmin-severity = "medium"\n', encoding="utf-8"
         )
         result = load_config(tmp_path, VALID_CHECKS)
         assert result == {"exclude": ["tests/"], "min-severity": "medium"}
 
     def test_dotfile_takes_precedence(self, tmp_path):
         """When both exist, .pysmelly.toml wins."""
-        (tmp_path / ".pysmelly.toml").write_text('skip = ["dead-code"]\n')
-        (tmp_path / "pyproject.toml").write_text('[tool.pysmelly]\nskip = ["internal-only"]\n')
+        (tmp_path / ".pysmelly.toml").write_text('skip = ["dead-code"]\n', encoding="utf-8")
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool.pysmelly]\nskip = ["internal-only"]\n', encoding="utf-8"
+        )
         result = load_config(tmp_path, VALID_CHECKS)
         assert result == {"skip": ["dead-code"]}
 
     def test_pyproject_without_tool_section(self, tmp_path):
-        (tmp_path / "pyproject.toml").write_text("[build-system]\nrequires = []\n")
+        (tmp_path / "pyproject.toml").write_text(
+            "[build-system]\nrequires = []\n", encoding="utf-8"
+        )
         result = load_config(tmp_path, VALID_CHECKS)
         assert result == {}
 
     def test_pyproject_without_pysmelly_section(self, tmp_path):
-        (tmp_path / "pyproject.toml").write_text("[tool.ruff]\nline-length = 88\n")
+        (tmp_path / "pyproject.toml").write_text(
+            "[tool.ruff]\nline-length = 88\n", encoding="utf-8"
+        )
         result = load_config(tmp_path, VALID_CHECKS)
         assert result == {}
 
     def test_empty_dotfile(self, tmp_path):
-        (tmp_path / ".pysmelly.toml").write_text("")
+        (tmp_path / ".pysmelly.toml").write_text("", encoding="utf-8")
         result = load_config(tmp_path, VALID_CHECKS)
         assert result == {}
 
@@ -162,15 +180,44 @@ class TestValidation:
         with pytest.raises(ConfigError, match="must contain strings"):
             _validate_config({"expected-coupling": [[1, 2]]}, "test", VALID_CHECKS)
 
+    def test_git_window_must_be_string(self):
+        message = "test: 'git-window' must be a string, got int"
+        with pytest.raises(ConfigError, match=f"^{re.escape(message)}$"):
+            _validate_config({"git-window": 6}, "test", VALID_CHECKS)
+
+    def test_skip_items_must_be_strings(self):
+        message = "test: 'skip' items must be strings, got bool"
+        with pytest.raises(ConfigError, match=f"^{re.escape(message)}$"):
+            _validate_config({"skip": [True]}, "test", VALID_CHECKS)
+
+    def test_expected_coupling_triple_is_not_a_pair(self):
+        message = "test: 'expected-coupling' items must be 2-element lists, got ['a', 'b', 'c'] at index 1"
+        with pytest.raises(ConfigError, match=f"^{re.escape(message)}$"):
+            _validate_config(
+                {"expected-coupling": [["x", "y"], ["a", "b", "c"]]}, "test", VALID_CHECKS
+            )
+
+    def test_commit_messages_invalid_value_lists_valid_values(self):
+        message = (
+            "test: invalid commit-messages 'never'. Valid values: auto, structured, unstructured"
+        )
+        with pytest.raises(ConfigError, match=f"^{re.escape(message)}$"):
+            _validate_config({"commit-messages": "never"}, "test", VALID_CHECKS)
+
+    def test_min_severity_invalid_value_lists_valid_values(self):
+        message = "test: invalid min-severity 'critical'. Valid values: high, low, medium"
+        with pytest.raises(ConfigError, match=f"^{re.escape(message)}$"):
+            _validate_config({"min-severity": "critical"}, "test", VALID_CHECKS)
+
 
 class TestCLIConfigIntegration:
     def test_config_exclude_applied(self, tmp_path, capsys):
         """Config file excludes are picked up by CLI."""
         from pysmelly.cli import main
 
-        (tmp_path / ".pysmelly.toml").write_text('exclude = ["test_*"]\n')
-        (tmp_path / "app.py").write_text("def unused_func():\n    pass\n")
-        (tmp_path / "test_app.py").write_text("def another_unused():\n    pass\n")
+        (tmp_path / ".pysmelly.toml").write_text('exclude = ["test_*"]\n', encoding="utf-8")
+        (tmp_path / "app.py").write_text("def unused_func():\n    pass\n", encoding="utf-8")
+        (tmp_path / "test_app.py").write_text("def another_unused():\n    pass\n", encoding="utf-8")
         try:
             main(["--no-context", str(tmp_path)])
         except SystemExit:
@@ -182,8 +229,8 @@ class TestCLIConfigIntegration:
         """Config file skip is picked up by CLI."""
         from pysmelly.cli import main
 
-        (tmp_path / ".pysmelly.toml").write_text('skip = ["dead-code"]\n')
-        (tmp_path / "app.py").write_text("def unused_func():\n    pass\n")
+        (tmp_path / ".pysmelly.toml").write_text('skip = ["dead-code"]\n', encoding="utf-8")
+        (tmp_path / "app.py").write_text("def unused_func():\n    pass\n", encoding="utf-8")
         try:
             main(["--no-context", str(tmp_path)])
         except SystemExit:
@@ -195,12 +242,12 @@ class TestCLIConfigIntegration:
         """CLI --exclude adds to config exclude, not replaces."""
         from pysmelly.cli import main
 
-        (tmp_path / ".pysmelly.toml").write_text('exclude = ["vendor/"]\n')
+        (tmp_path / ".pysmelly.toml").write_text('exclude = ["vendor/"]\n', encoding="utf-8")
         vendor = tmp_path / "vendor"
         vendor.mkdir()
-        (vendor / "lib.py").write_text("def vendored():\n    pass\n")
-        (tmp_path / "app.py").write_text("def unused_func():\n    pass\n")
-        (tmp_path / "test_app.py").write_text("def test_unused():\n    pass\n")
+        (vendor / "lib.py").write_text("def vendored():\n    pass\n", encoding="utf-8")
+        (tmp_path / "app.py").write_text("def unused_func():\n    pass\n", encoding="utf-8")
+        (tmp_path / "test_app.py").write_text("def test_unused():\n    pass\n", encoding="utf-8")
         try:
             main(["--no-context", "--exclude", "test_*", str(tmp_path)])
         except SystemExit:
@@ -212,8 +259,8 @@ class TestCLIConfigIntegration:
         """Config min-severity is applied."""
         from pysmelly.cli import main
 
-        (tmp_path / ".pysmelly.toml").write_text('min-severity = "high"\n')
-        (tmp_path / "app.py").write_text("def unused_func():\n    pass\n")
+        (tmp_path / ".pysmelly.toml").write_text('min-severity = "high"\n', encoding="utf-8")
+        (tmp_path / "app.py").write_text("def unused_func():\n    pass\n", encoding="utf-8")
         try:
             main(["--no-context", str(tmp_path)])
         except SystemExit:
@@ -227,8 +274,8 @@ class TestCLIConfigIntegration:
         """CLI --min-severity overrides config."""
         from pysmelly.cli import main
 
-        (tmp_path / ".pysmelly.toml").write_text('min-severity = "high"\n')
-        (tmp_path / "app.py").write_text("def unused_func():\n    pass\n")
+        (tmp_path / ".pysmelly.toml").write_text('min-severity = "high"\n', encoding="utf-8")
+        (tmp_path / "app.py").write_text("def unused_func():\n    pass\n", encoding="utf-8")
         try:
             main(["--no-context", "--min-severity", "low", str(tmp_path)])
         except SystemExit:
@@ -241,7 +288,7 @@ class TestCLIConfigIntegration:
         """Invalid config file causes exit with error."""
         from pysmelly.cli import main
 
-        (tmp_path / ".pysmelly.toml").write_text('bogus_key = "value"\n')
+        (tmp_path / ".pysmelly.toml").write_text('bogus_key = "value"\n', encoding="utf-8")
         with pytest.raises(SystemExit) as exc_info:
             main([str(tmp_path)])
         assert exc_info.value.code == 1
@@ -257,15 +304,22 @@ class TestCLIConfigIntegration:
         """
         from pysmelly.cli import main
 
-        (tmp_path / "pyproject.toml").write_text("[tool.pysmelly\nskip = [\n")
+        (tmp_path / "pyproject.toml").write_text("[tool.pysmelly\nskip = [\n", encoding="utf-8")
         with pytest.raises(SystemExit) as exc_info:
             main([str(tmp_path)])
         assert exc_info.value.code == 1
         assert "pyproject.toml" in capsys.readouterr().err
 
+    def test_malformed_dotfile_raises_naming_the_file(self, tmp_path):
+        """A .pysmelly.toml that will not parse is a ConfigError, not "no config"."""
+        dotfile = tmp_path / ".pysmelly.toml"
+        dotfile.write_text("skip = [\n", encoding="utf-8")
+        with pytest.raises(ConfigError, match=re.escape(f"{dotfile}: ")):
+            load_config(tmp_path, VALID_CHECKS)
+
     def test_malformed_parent_pyproject_does_not_abort(self, tmp_path, capsys):
         """An unparseable ancestor pyproject.toml only suppresses the advisory warning."""
-        (tmp_path / "pyproject.toml").write_text("[tool.pysmelly\n")
+        (tmp_path / "pyproject.toml").write_text("[tool.pysmelly\n", encoding="utf-8")
         src = tmp_path / "src"
         src.mkdir()
         assert load_config(src, VALID_CHECKS) == {}
@@ -290,7 +344,9 @@ class TestUserCatalog:
     """The ``catalog`` key: stdlib-alternatives entries a project adds."""
 
     def test_pyproject_entry_is_parsed(self, tmp_path):
-        (tmp_path / "pyproject.toml").write_text(BOTO3_ENTRY.format(prefix="tool.pysmelly."))
+        (tmp_path / "pyproject.toml").write_text(
+            BOTO3_ENTRY.format(prefix="tool.pysmelly."), encoding="utf-8"
+        )
         config = load_config(tmp_path, VALID_CHECKS)
         (pattern,) = config["catalog"].patterns
         assert pattern.name == "boto3-client-factory"
@@ -299,108 +355,115 @@ class TestUserCatalog:
         assert pattern.suggest == "acme.aws.client() (the shared factory)"
 
     def test_dotfile_entry_is_parsed(self, tmp_path):
-        (tmp_path / ".pysmelly.toml").write_text(BOTO3_ENTRY.format(prefix=""))
+        (tmp_path / ".pysmelly.toml").write_text(BOTO3_ENTRY.format(prefix=""), encoding="utf-8")
         assert _catalog_names(load_config(tmp_path, VALID_CHECKS)) == ["boto3-client-factory"]
 
     def test_dotfile_catalog_wins_over_pyproject(self, tmp_path):
         """The two files never merge: .pysmelly.toml's catalog is the only one read."""
-        (tmp_path / ".pysmelly.toml").write_text(BOTO3_ENTRY.format(prefix=""))
+        (tmp_path / ".pysmelly.toml").write_text(BOTO3_ENTRY.format(prefix=""), encoding="utf-8")
         (tmp_path / "pyproject.toml").write_text(
             "[[tool.pysmelly.catalog.patterns]]\n"
             'name = "requests-session"\n'
             'description = "HTTP"\n'
             'imports = ["requests"]\n'
-            'suggest = "acme.http.session()"\n'
+            'suggest = "acme.http.session()"\n',
+            encoding="utf-8",
         )
         assert _catalog_names(load_config(tmp_path, VALID_CHECKS)) == ["boto3-client-factory"]
 
     def test_pyproject_catalog_ignored_when_dotfile_has_none(self, tmp_path):
-        (tmp_path / ".pysmelly.toml").write_text('skip = ["dead-code"]\n')
-        (tmp_path / "pyproject.toml").write_text(BOTO3_ENTRY.format(prefix="tool.pysmelly."))
+        (tmp_path / ".pysmelly.toml").write_text('skip = ["dead-code"]\n', encoding="utf-8")
+        (tmp_path / "pyproject.toml").write_text(
+            BOTO3_ENTRY.format(prefix="tool.pysmelly."), encoding="utf-8"
+        )
         assert "catalog" not in load_config(tmp_path, VALID_CHECKS)
 
-    def test_unknown_field_exits(self, tmp_path, capsys):
+    def test_unknown_field_raises(self, tmp_path):
         (tmp_path / ".pysmelly.toml").write_text(
-            BOTO3_ENTRY.format(prefix="") + 'severity = "high"\n'
+            BOTO3_ENTRY.format(prefix="") + 'severity = "high"\n', encoding="utf-8"
         )
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(ConfigError) as exc_info:
             load_config(tmp_path, VALID_CHECKS)
-        assert exc_info.value.code == 1
-        err = capsys.readouterr().err
+        err = str(exc_info.value)
         assert "catalog patterns[0]: unknown field(s): severity" in err
         assert "Valid fields:" in err
 
-    def test_missing_field_exits(self, tmp_path, capsys):
+    def test_missing_field_raises(self, tmp_path):
         (tmp_path / ".pysmelly.toml").write_text(
-            '[[catalog.patterns]]\nname = "x"\nimports = ["boto3"]\n'
+            '[[catalog.patterns]]\nname = "x"\nimports = ["boto3"]\n', encoding="utf-8"
         )
-        with pytest.raises(SystemExit):
+        with pytest.raises(
+            ConfigError, match=re.escape("missing required field(s): description, suggest")
+        ):
             load_config(tmp_path, VALID_CHECKS)
-        assert "missing required field(s): description, suggest" in capsys.readouterr().err
 
-    def test_wrong_type_exits(self, tmp_path, capsys):
+    def test_wrong_type_raises(self, tmp_path):
         (tmp_path / ".pysmelly.toml").write_text(
             '[[catalog.patterns]]\nname = "x"\ndescription = "d"\n'
-            'imports = "boto3"\nsuggest = "s"\n'
+            'imports = "boto3"\nsuggest = "s"\n',
+            encoding="utf-8",
         )
-        with pytest.raises(SystemExit):
+        with pytest.raises(ConfigError, match=re.escape("'imports' must be a non-empty list")):
             load_config(tmp_path, VALID_CHECKS)
-        assert "'imports' must be a non-empty list" in capsys.readouterr().err
 
-    def test_condition_must_be_also_imports(self, tmp_path, capsys):
+    def test_condition_must_be_also_imports(self, tmp_path):
         (tmp_path / ".pysmelly.toml").write_text(
-            BOTO3_ENTRY.format(prefix="").replace("also-imports:acme.aws", "requires:acme.aws")
+            BOTO3_ENTRY.format(prefix="").replace("also-imports:acme.aws", "requires:acme.aws"),
+            encoding="utf-8",
         )
-        with pytest.raises(SystemExit):
+        with pytest.raises(
+            ConfigError, match=re.escape("'condition' must be 'also-imports:<module>'")
+        ):
             load_config(tmp_path, VALID_CHECKS)
-        assert "'condition' must be 'also-imports:<module>'" in capsys.readouterr().err
 
-    def test_unknown_condition_fn_exits(self, tmp_path, capsys):
+    def test_unknown_condition_fn_raises(self, tmp_path):
         (tmp_path / ".pysmelly.toml").write_text(
-            BOTO3_ENTRY.format(prefix="") + 'condition_fn = "is_big"\n'
+            BOTO3_ENTRY.format(prefix="") + 'condition_fn = "is_big"\n', encoding="utf-8"
         )
-        with pytest.raises(SystemExit):
+        with pytest.raises(ConfigError, match=re.escape("unknown condition_fn 'is_big'")):
             load_config(tmp_path, VALID_CHECKS)
-        assert "unknown condition_fn 'is_big'" in capsys.readouterr().err
 
-    def test_catalog_must_be_a_table(self, tmp_path, capsys):
-        (tmp_path / ".pysmelly.toml").write_text('catalog = ["boto3"]\n')
-        with pytest.raises(SystemExit):
+    def test_catalog_must_be_a_table(self, tmp_path):
+        (tmp_path / ".pysmelly.toml").write_text('catalog = ["boto3"]\n', encoding="utf-8")
+        with pytest.raises(ConfigError, match=re.escape("catalog: must be a table, got list")):
             load_config(tmp_path, VALID_CHECKS)
-        assert "catalog: must be a table, got list" in capsys.readouterr().err
 
-    def test_unknown_catalog_key_exits(self, tmp_path, capsys):
-        (tmp_path / ".pysmelly.toml").write_text("[catalog]\npatterns = []\nrules = []\n")
-        with pytest.raises(SystemExit):
+    def test_unknown_catalog_key_raises(self, tmp_path):
+        (tmp_path / ".pysmelly.toml").write_text(
+            "[catalog]\npatterns = []\nrules = []\n", encoding="utf-8"
+        )
+        with pytest.raises(ConfigError, match=re.escape("catalog: unknown key(s): rules")):
             load_config(tmp_path, VALID_CHECKS)
-        assert "catalog: unknown key(s): rules" in capsys.readouterr().err
 
-    def test_shadowing_a_shipped_name_exits(self, tmp_path, capsys):
+    def test_shadowing_a_shipped_name_raises(self, tmp_path):
         """A project entry adds a pattern; it never overrides a shipped one."""
         (tmp_path / "pyproject.toml").write_text(
             "[[tool.pysmelly.catalog.patterns]]\n"
             'name = "os-path-vs-pathlib"\n'
             'description = "path manipulation"\n'
             'imports = ["os.path"]\n'
-            'suggest = "nothing, we like os.path"\n'
+            'suggest = "nothing, we like os.path"\n',
+            encoding="utf-8",
         )
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(ConfigError) as exc_info:
             load_config(tmp_path, VALID_CHECKS)
-        assert exc_info.value.code == 1
-        err = capsys.readouterr().err
+        err = str(exc_info.value)
         assert "[tool.pysmelly] catalog" in err
         assert "'os-path-vs-pathlib' is already a shipped catalog entry" in err
 
-    def test_duplicate_user_names_exit(self, tmp_path, capsys):
+    def test_duplicate_user_names_raises(self, tmp_path):
         entry = BOTO3_ENTRY.format(prefix="")
-        (tmp_path / ".pysmelly.toml").write_text(entry + "\n" + entry)
-        with pytest.raises(SystemExit):
+        (tmp_path / ".pysmelly.toml").write_text(entry + "\n" + entry, encoding="utf-8")
+        with pytest.raises(
+            ConfigError, match=re.escape("duplicate pattern name 'boto3-client-factory'")
+        ):
             load_config(tmp_path, VALID_CHECKS)
-        assert "duplicate pattern name 'boto3-client-factory'" in capsys.readouterr().err
 
     def test_pyproject_pair_is_parsed(self, tmp_path):
         """dual-stack-dependency pairs come through the same ``catalog`` table."""
-        (tmp_path / "pyproject.toml").write_text(HTTP_PAIR.format(prefix="tool.pysmelly."))
+        (tmp_path / "pyproject.toml").write_text(
+            HTTP_PAIR.format(prefix="tool.pysmelly."), encoding="utf-8"
+        )
         catalog = load_config(tmp_path, VALID_CHECKS)["catalog"]
         assert catalog.patterns == ()
         (pair,) = catalog.pairs
@@ -409,7 +472,7 @@ class TestUserCatalog:
 
     def test_patterns_and_pairs_together(self, tmp_path):
         (tmp_path / ".pysmelly.toml").write_text(
-            BOTO3_ENTRY.format(prefix="") + HTTP_PAIR.format(prefix="")
+            BOTO3_ENTRY.format(prefix="") + HTTP_PAIR.format(prefix=""), encoding="utf-8"
         )
         catalog = load_config(tmp_path, VALID_CHECKS)["catalog"]
         assert ([p.name for p in catalog.patterns], [p.name for p in catalog.pairs]) == (
@@ -417,31 +480,34 @@ class TestUserCatalog:
             ["acme-http"],
         )
 
-    def test_shadowing_a_shipped_pair_exits(self, tmp_path, capsys):
+    def test_shadowing_a_shipped_pair_raises(self, tmp_path):
         (tmp_path / "pyproject.toml").write_text(
-            HTTP_PAIR.format(prefix="tool.pysmelly.").replace("acme-http", "os-path-pathlib")
+            HTTP_PAIR.format(prefix="tool.pysmelly.").replace("acme-http", "os-path-pathlib"),
+            encoding="utf-8",
         )
-        with pytest.raises(SystemExit) as exc_info:
+        with pytest.raises(ConfigError) as exc_info:
             load_config(tmp_path, VALID_CHECKS)
-        assert exc_info.value.code == 1
-        err = capsys.readouterr().err
+        err = str(exc_info.value)
         assert "[tool.pysmelly] catalog" in err
         assert "'os-path-pathlib' is already a shipped catalog pair" in err
 
-    def test_invalid_pair_exits(self, tmp_path, capsys):
+    def test_invalid_pair_raises(self, tmp_path):
         (tmp_path / ".pysmelly.toml").write_text(
             '[[catalog.pairs]]\nname = "x"\ndescription = "d"\n'
-            'sides = [{ label = "a", imports = ["a"] }]\n'
+            'sides = [{ label = "a", imports = ["a"] }]\n',
+            encoding="utf-8",
         )
-        with pytest.raises(SystemExit):
+        with pytest.raises(
+            ConfigError, match=re.escape("'sides' must be an array of exactly two tables")
+        ):
             load_config(tmp_path, VALID_CHECKS)
-        assert "'sides' must be an array of exactly two tables" in capsys.readouterr().err
 
-    def test_empty_catalog_table_exits(self, tmp_path, capsys):
-        (tmp_path / ".pysmelly.toml").write_text("[catalog]\n")
-        with pytest.raises(SystemExit):
+    def test_empty_catalog_table_raises(self, tmp_path):
+        (tmp_path / ".pysmelly.toml").write_text("[catalog]\n", encoding="utf-8")
+        with pytest.raises(
+            ConfigError, match=re.escape("catalog: needs a 'patterns' or a 'pairs' array")
+        ):
             load_config(tmp_path, VALID_CHECKS)
-        assert "catalog: needs a 'patterns' or a 'pairs' array" in capsys.readouterr().err
 
 
 HTTP_PAIR = """\
@@ -466,11 +532,13 @@ class TestUserCatalogInStdlibAlternatives:
         return capsys.readouterr().out
 
     def _project(self, tmp_path, files: dict[str, str]) -> None:
-        (tmp_path / "pyproject.toml").write_text(BOTO3_ENTRY.format(prefix="tool.pysmelly."))
+        (tmp_path / "pyproject.toml").write_text(
+            BOTO3_ENTRY.format(prefix="tool.pysmelly."), encoding="utf-8"
+        )
         for name, code in files.items():
             path = tmp_path / name
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(code)
+            path.write_text(code, encoding="utf-8")
 
     def test_entry_fires_when_condition_holds(self, tmp_path, capsys):
         self._project(
@@ -501,11 +569,12 @@ class TestUserCatalogInStdlibAlternatives:
             'description = "database access"\n'
             'imports = ["legacydb"]\n'
             'exclude_imports = ["legacydb.testing"]\n'
-            'suggest = "acme.db"\n'
+            'suggest = "acme.db"\n',
+            encoding="utf-8",
         )
-        (tmp_path / "fixtures.py").write_text("import legacydb.testing\n")
+        (tmp_path / "fixtures.py").write_text("import legacydb.testing\n", encoding="utf-8")
         assert "acme.db" not in self._run(tmp_path, capsys)
-        (tmp_path / "app.py").write_text("import legacydb\n")
+        (tmp_path / "app.py").write_text("import legacydb\n", encoding="utf-8")
         assert "legacydb imported (app.py:1) — alternative: acme.db" in self._run(tmp_path, capsys)
 
     def test_condition_fn_applies(self, tmp_path, capsys):
@@ -515,13 +584,15 @@ class TestUserCatalogInStdlibAlternatives:
             'description = "CLI parsing"\n'
             'imports = ["argparse"]\n'
             'condition_fn = "complex_argparse"\n'
-            'suggest = "acme.cli"\n'
+            'suggest = "acme.cli"\n',
+            encoding="utf-8",
         )
         (tmp_path / "cli.py").write_text(
-            "import argparse\np = argparse.ArgumentParser()\np.add_argument('x')\n"
+            "import argparse\np = argparse.ArgumentParser()\np.add_argument('x')\n",
+            encoding="utf-8",
         )
         assert "acme.cli" not in self._run(tmp_path, capsys)
         (tmp_path / "cli.py").write_text(
-            "import argparse\np = argparse.ArgumentParser()\np.add_subparsers()\n"
+            "import argparse\np = argparse.ArgumentParser()\np.add_subparsers()\n", encoding="utf-8"
         )
         assert "argparse imported (cli.py:1) — alternative: acme.cli" in self._run(tmp_path, capsys)

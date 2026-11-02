@@ -90,7 +90,7 @@ class TestGitHistoryParsing:
         """GitHistory parses real git log output."""
         # Create a file and commit it
         py_file = git_repo / "app.py"
-        py_file.write_text("x = 1\n")
+        py_file.write_text("x = 1\n", encoding="utf-8")
         _git(git_repo, "add", "app.py")
         _git(git_repo, "commit", "-m", "feat: initial commit")
 
@@ -101,7 +101,7 @@ class TestGitHistoryParsing:
     @pytest.mark.parametrize("separator", ["\r", "\x1c", _LINE_SEPARATOR])
     def test_a_line_break_in_a_subject_stays_in_its_record(self, git_repo, separator):
         """Only \\n ends a line of git log: a lone \\r or a Unicode separator is subject text."""
-        (git_repo / "app.py").write_text("x = 1\n")
+        (git_repo / "app.py").write_text("x = 1\n", encoding="utf-8")
         _git(git_repo, "add", "app.py")
         _git(git_repo, "commit", "-m", f"feat: one{separator}phantom.py")
 
@@ -119,12 +119,12 @@ class TestGitHistoryParsing:
 
     def test_multiple_files(self, git_repo):
         """Multiple files across commits are indexed correctly."""
-        (git_repo / "a.py").write_text("x = 1\n")
-        (git_repo / "b.py").write_text("y = 2\n")
+        (git_repo / "a.py").write_text("x = 1\n", encoding="utf-8")
+        (git_repo / "b.py").write_text("y = 2\n", encoding="utf-8")
         _git(git_repo, "add", ".")
         _git(git_repo, "commit", "-m", "feat: add both files")
 
-        (git_repo / "a.py").write_text("x = 2\n")
+        (git_repo / "a.py").write_text("x = 2\n", encoding="utf-8")
         _git(git_repo, "add", "a.py")
         _git(git_repo, "commit", "-m", "fix: update a")
 
@@ -140,7 +140,7 @@ class TestGitHistoryParsing:
 
     def test_invalid_window_produces_empty_history(self, git_repo):
         """Invalid window format produces empty history (not a crash)."""
-        (git_repo / "a.py").write_text("x = 1\n")
+        (git_repo / "a.py").write_text("x = 1\n", encoding="utf-8")
         _git(git_repo, "add", "a.py")
         _git(git_repo, "commit", "-m", "initial")
 
@@ -162,11 +162,11 @@ class TestMessageQualityProperty:
         assert history.message_quality == 0.0
 
     def test_auto_with_conventional_commits(self, git_repo):
-        (git_repo / "a.py").write_text("x = 1\n")
+        (git_repo / "a.py").write_text("x = 1\n", encoding="utf-8")
         _git(git_repo, "add", "a.py")
         _git(git_repo, "commit", "-m", "feat: add initial module")
 
-        (git_repo / "a.py").write_text("x = 2\n")
+        (git_repo / "a.py").write_text("x = 2\n", encoding="utf-8")
         _git(git_repo, "add", "a.py")
         _git(git_repo, "commit", "-m", "fix: correct value assignment")
 
@@ -174,11 +174,11 @@ class TestMessageQualityProperty:
         assert history.message_quality == 1.0
 
     def test_auto_with_low_quality_commits(self, git_repo):
-        (git_repo / "a.py").write_text("x = 1\n")
+        (git_repo / "a.py").write_text("x = 1\n", encoding="utf-8")
         _git(git_repo, "add", "a.py")
         _git(git_repo, "commit", "-m", "wip")
 
-        (git_repo / "a.py").write_text("x = 2\n")
+        (git_repo / "a.py").write_text("x = 2\n", encoding="utf-8")
         _git(git_repo, "add", "a.py")
         _git(git_repo, "commit", "-m", "stuff")
 
@@ -189,7 +189,7 @@ class TestMessageQualityProperty:
 class TestReviewedMarkers:
     def test_reviewed_updates_last_modified(self, git_repo):
         """'pysmelly: reviewed' in a commit message updates last_modified."""
-        (git_repo / "old.py").write_text("x = 1\n")
+        (git_repo / "old.py").write_text("x = 1\n", encoding="utf-8")
         _git(git_repo, "add", "old.py")
         _git(git_repo, "commit", "-m", "initial")
 
@@ -209,12 +209,12 @@ class TestReviewedMarkers:
 
     def test_reviewed_in_regular_commit(self, git_repo):
         """Review marker works in a commit that also touches files."""
-        (git_repo / "old.py").write_text("x = 1\n")
-        (git_repo / "new.py").write_text("y = 2\n")
+        (git_repo / "old.py").write_text("x = 1\n", encoding="utf-8")
+        (git_repo / "new.py").write_text("y = 2\n", encoding="utf-8")
         _git(git_repo, "add", ".")
         _git(git_repo, "commit", "-m", "initial")
 
-        (git_repo / "new.py").write_text("y = 3\n")
+        (git_repo / "new.py").write_text("y = 3\n", encoding="utf-8")
         _git(git_repo, "add", "new.py")
         _git(
             git_repo,
@@ -228,8 +228,8 @@ class TestReviewedMarkers:
 
     def test_multiple_reviewed_in_one_commit(self, git_repo):
         """Multiple reviewed markers in a single commit."""
-        (git_repo / "a.py").write_text("x = 1\n")
-        (git_repo / "b.py").write_text("y = 2\n")
+        (git_repo / "a.py").write_text("x = 1\n", encoding="utf-8")
+        (git_repo / "b.py").write_text("y = 2\n", encoding="utf-8")
         _git(git_repo, "add", ".")
         _git(git_repo, "commit", "-m", "initial")
 
@@ -247,7 +247,7 @@ class TestReviewedMarkers:
 
     def test_no_reviewed_markers(self, git_repo):
         """Normal commits produce empty reviewed_at."""
-        (git_repo / "a.py").write_text("x = 1\n")
+        (git_repo / "a.py").write_text("x = 1\n", encoding="utf-8")
         _git(git_repo, "add", "a.py")
         _git(git_repo, "commit", "-m", "feat: initial")
 
@@ -258,11 +258,11 @@ class TestReviewedMarkers:
 class TestFileStats:
     def test_numstat_basic(self, git_repo):
         """file_stats reports insertions and deletions."""
-        (git_repo / "app.py").write_text("line1\nline2\nline3\n")
+        (git_repo / "app.py").write_text("line1\nline2\nline3\n", encoding="utf-8")
         _git(git_repo, "add", "app.py")
         _git(git_repo, "commit", "-m", "feat: initial")
 
-        (git_repo / "app.py").write_text("line1\nline2\nline3\nline4\nline5\n")
+        (git_repo / "app.py").write_text("line1\nline2\nline3\nline4\nline5\n", encoding="utf-8")
         _git(git_repo, "add", "app.py")
         _git(git_repo, "commit", "-m", "feat: add lines")
 
@@ -274,7 +274,7 @@ class TestFileStats:
 
     def test_numstat_lazy(self, git_repo):
         """file_stats is not parsed until accessed."""
-        (git_repo / "app.py").write_text("x = 1\n")
+        (git_repo / "app.py").write_text("x = 1\n", encoding="utf-8")
         _git(git_repo, "add", "app.py")
         _git(git_repo, "commit", "-m", "initial")
 
@@ -290,11 +290,11 @@ class TestFileStats:
 
     def test_numstat_deletions(self, git_repo):
         """file_stats tracks deletions."""
-        (git_repo / "app.py").write_text("a\nb\nc\nd\ne\n")
+        (git_repo / "app.py").write_text("a\nb\nc\nd\ne\n", encoding="utf-8")
         _git(git_repo, "add", "app.py")
         _git(git_repo, "commit", "-m", "initial")
 
-        (git_repo / "app.py").write_text("a\nb\n")
+        (git_repo / "app.py").write_text("a\nb\n", encoding="utf-8")
         _git(git_repo, "add", "app.py")
         _git(git_repo, "commit", "-m", "remove lines")
 
@@ -440,7 +440,7 @@ class TestWindowToDays:
 class TestAuthorParsing:
     def test_author_in_commit_info(self, git_repo):
         """Author is parsed from git log output."""
-        (git_repo / "app.py").write_text("x = 1\n")
+        (git_repo / "app.py").write_text("x = 1\n", encoding="utf-8")
         _git(git_repo, "add", "app.py")
         _git(git_repo, "commit", "-m", "feat: initial")
 
@@ -450,11 +450,11 @@ class TestAuthorParsing:
 
     def test_authors_for_file_populated(self, git_repo):
         """authors_for_file index is built from commits."""
-        (git_repo / "app.py").write_text("x = 1\n")
+        (git_repo / "app.py").write_text("x = 1\n", encoding="utf-8")
         _git(git_repo, "add", "app.py")
         _git(git_repo, "commit", "-m", "feat: initial")
 
-        (git_repo / "app.py").write_text("x = 2\n")
+        (git_repo / "app.py").write_text("x = 2\n", encoding="utf-8")
         _git(git_repo, "add", "app.py")
         _git(git_repo, "commit", "-m", "fix: update")
 
@@ -466,7 +466,7 @@ class TestAuthorParsing:
 class TestTimeSlices:
     def test_time_slices_created(self, git_repo):
         """Time slices are created from commits."""
-        (git_repo / "app.py").write_text("x = 1\n")
+        (git_repo / "app.py").write_text("x = 1\n", encoding="utf-8")
         _git(git_repo, "add", "app.py")
         _git(git_repo, "commit", "-m", "feat: initial")
 
@@ -481,7 +481,7 @@ class TestTimeSlices:
 
     def test_commits_per_slice(self, git_repo):
         """commits_per_slice is computed."""
-        (git_repo / "app.py").write_text("x = 1\n")
+        (git_repo / "app.py").write_text("x = 1\n", encoding="utf-8")
         _git(git_repo, "add", "app.py")
         _git(git_repo, "commit", "-m", "feat: initial")
 
@@ -490,7 +490,7 @@ class TestTimeSlices:
 
     def test_is_coarse_grained_with_few_commits(self, git_repo):
         """Single commit produces coarse-grained assessment."""
-        (git_repo / "app.py").write_text("x = 1\n")
+        (git_repo / "app.py").write_text("x = 1\n", encoding="utf-8")
         _git(git_repo, "add", "app.py")
         _git(git_repo, "commit", "-m", "feat: initial")
 
@@ -500,7 +500,7 @@ class TestTimeSlices:
 
     def test_files_touched_populated(self, git_repo):
         """Time slice files_touched includes committed files."""
-        (git_repo / "app.py").write_text("x = 1\n")
+        (git_repo / "app.py").write_text("x = 1\n", encoding="utf-8")
         _git(git_repo, "add", "app.py")
         _git(git_repo, "commit", "-m", "feat: initial")
 
@@ -512,7 +512,7 @@ class TestTimeSlices:
 
     def test_files_by_category_populated(self, git_repo):
         """Time slice files_by_category includes categorized files."""
-        (git_repo / "app.py").write_text("x = 1\n")
+        (git_repo / "app.py").write_text("x = 1\n", encoding="utf-8")
         _git(git_repo, "add", "app.py")
         _git(git_repo, "commit", "-m", "feat: add module")
 

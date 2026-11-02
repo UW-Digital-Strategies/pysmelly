@@ -11,7 +11,7 @@ import ast
 import shutil
 import tempfile
 from collections import Counter
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -70,7 +70,7 @@ class Comparison:
 
 
 @contextmanager
-def ref_worktree(git_root: Path, sha: str) -> Iterator[Path]:
+def ref_worktree(git_root: Path, sha: str) -> Generator[Path, None, None]:
     """Check `sha` out into a temporary detached worktree; remove it on every exit.
 
     The directory is created here and nowhere else, so removing it with

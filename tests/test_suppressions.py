@@ -73,22 +73,22 @@ class TestDirectiveDetection:
 
     def test_trailing_directive_is_flagged(self, tmp_path):
         path = tmp_path / "trailing.py"
-        path.write_text("x = 1  # pysmelly: ignore[dead-code]\n")
+        path.write_text("x = 1  # pysmelly: ignore[dead-code]\n", encoding="utf-8")
         assert _directives(path) == [(1, True)]
 
     def test_full_line_directive_is_not_flagged(self, tmp_path):
         path = tmp_path / "above.py"
-        path.write_text("# pysmelly: ignore[dead-code]\nx = 1\n")
+        path.write_text("# pysmelly: ignore[dead-code]\nx = 1\n", encoding="utf-8")
         assert _directives(path) == [(1, False)]
 
     def test_prose_mentioning_the_marker_is_not_a_directive(self, tmp_path):
         path = tmp_path / "prose.py"
-        path.write_text("# Specific check: pysmelly: ignore[check-name]\nx = 1\n")
+        path.write_text("# Specific check: pysmelly: ignore[check-name]\nx = 1\n", encoding="utf-8")
         assert _directives(path) == []
 
     def test_marker_inside_a_string_is_not_a_directive(self, tmp_path):
         path = tmp_path / "docs.py"
-        path.write_text('HELP = "x = 1  # pysmelly: ignore[dead-code]"\n')
+        path.write_text('HELP = "x = 1  # pysmelly: ignore[dead-code]"\n', encoding="utf-8")
         assert _directives(path) == []
 
 

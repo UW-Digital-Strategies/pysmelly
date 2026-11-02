@@ -159,7 +159,9 @@ class TestNoRoots:
         assert NO_ROOTS_NOTE in capsys.readouterr().err
 
     def test_cli_prints_the_note_on_stderr_only(self, tmp_path, monkeypatch, capsys):
-        (tmp_path / "lib.py").write_text("def _a():\n    _b()\n\n\ndef _b():\n    _a()\n")
+        (tmp_path / "lib.py").write_text(
+            "def _a():\n    _b()\n\n\ndef _b():\n    _a()\n", encoding="utf-8"
+        )
         monkeypatch.chdir(tmp_path)
         with pytest.raises(SystemExit) as exc:
             main([str(tmp_path), "--no-context", "--check", CHECK])
@@ -547,7 +549,7 @@ class TestSites:
                 return _a()
             """
         )
-        (tmp_path / "app.py").write_text(app)
+        (tmp_path / "app.py").write_text(app, encoding="utf-8")
         monkeypatch.chdir(tmp_path)
         with pytest.raises(SystemExit):
             main([str(tmp_path), "--no-context", "--check", CHECK])

@@ -270,7 +270,7 @@ class TestNeverImportsInput:
             [sys.executable, "-m", "pysmelly.cli", ".", "--no-context", "--all"],
             cwd=shadowing_project,
             capture_output=True,
-            text=True,
+            encoding="utf-8",
             check=False,
         )
         assert "Traceback" not in result.stderr, result.stderr
@@ -293,7 +293,7 @@ class TestNeverImportsInput:
             [sys.executable, "-c", probe],
             cwd=shadowing_project,
             capture_output=True,
-            text=True,
+            encoding="utf-8",
             check=False,
         )
         assert "Traceback" not in result.stderr, result.stderr

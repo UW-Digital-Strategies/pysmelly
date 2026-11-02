@@ -6,32 +6,22 @@ import glob
 import re
 import sys
 import tomllib
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
+from typing import Any
 
 from pysmelly.catalog import CatalogError, parse_user_catalog
 from pysmelly.pyproject import PYPROJECT, read_pyproject
 
-# Keys that accept list values
-LIST_KEYS = frozenset({"exclude", "skip"})
-
-# Keys that accept string values
-STRING_KEYS = frozenset({"min-severity", "check", "git-window", "commit-messages"})
-
-# Keys that accept boolean values
-BOOL_KEYS: frozenset[str] = frozenset()
-
 # File-pattern pairs whose co-change is by design (fnmatch patterns)
 EXPECTED_COUPLING_KEY = "expected-coupling"
-
-# Keys that accept list-of-pairs values (each item is a 2-element list of strings)
-PAIR_LIST_KEYS = frozenset({EXPECTED_COUPLING_KEY})
 
 # The key whose value is a table in catalog.toml's schema: stdlib-alternatives
 # patterns and dual-stack-dependency pairs the project adds to the shipped ones
 CATALOG_KEY = "catalog"
 
-VALID_KEYS = LIST_KEYS | STRING_KEYS | BOOL_KEYS | PAIR_LIST_KEYS | {CATALOG_KEY}
+# pysmelly's own config file; it wins over a pyproject.toml [tool.pysmelly]
+DOTFILE = ".pysmelly.toml"
 
 VALID_SEVERITIES = frozenset({"low", "medium", "high"})
 
@@ -77,15 +67,13 @@ def expected_coupling_line(pairs: Iterable[tuple[str, str]]) -> str:
     return f"{EXPECTED_COUPLING_KEY} = [{items}]"
 
 
-def _find_config_file(target_dir: Path) -> Path | None:
-    """Find config file in target directory. First match wins:
-
-    1. .pysmelly.toml
-    2. pyproject.toml (must contain [tool.pysmelly])
+def _pyproject_table(target_dir: Path) -> dict | None:
+    """The ``[tool.pysmelly]`` table of ``target_dir``'s pyproject.toml.
 
     Returns:
-        The config file path, or None when the directory genuinely has no
-        pysmelly config. None never means "there is config I could not read".
+        The table, or None when there is no pyproject.toml or it has no
+        ``[tool.pysmelly]``. None never means "there is config I could not
+        read".
 
     Raises:
         ConfigError: if pyproject.toml exists but cannot be parsed. Reporting
@@ -93,14 +81,63 @@ def _find_config_file(target_dir: Path) -> Path | None:
             default settings — no skips, no excludes — and look like a clean
             result.
     """
-    dotfile = target_dir / ".pysmelly.toml"
-    if dotfile.is_file():
-        return dotfile
-
     data = read_pyproject(target_dir, ConfigError)
     if "tool" in data and "pysmelly" in data["tool"]:
-        return target_dir / PYPROJECT
+        return data["tool"]["pysmelly"]
     return None
+
+
+# The shape checks below each take a config value and yield what is wrong with
+# it, worded to follow "'<key>' "; _validate_config reports the first.
+
+
+def _string_list_problems(value: Any) -> Iterator[str]:
+    if not isinstance(value, list):
+        yield f"must be a list, got {type(value).__name__}"
+    else:
+        for item in value:
+            if not isinstance(item, str):
+                yield f"items must be strings, got {type(item).__name__}"
+
+
+def _string_problems(value: Any) -> Iterator[str]:
+    if not isinstance(value, str):
+        yield f"must be a string, got {type(value).__name__}"
+
+
+_PAIR_LENGTH = 2
+
+
+def _pair_list_problems(value: Any) -> Iterator[str]:
+    if not isinstance(value, list):
+        yield f"must be a list of pairs, got {type(value).__name__}"
+    else:
+        for i, item in enumerate(value):
+            if not isinstance(item, list) or len(item) != _PAIR_LENGTH:
+                yield f"items must be 2-element lists, got {item!r} at index {i}"
+            elif not all(isinstance(s, str) for s in item):
+                yield f"items must contain strings, got {item!r} at index {i}"
+
+
+# Each type-checked key and the shape check its value must pass. The catalog
+# table is absent: parse_user_catalog validates it against catalog.toml's schema.
+_KEY_SHAPES: dict[str, Callable[[Any], Iterator[str]]] = {
+    "exclude": _string_list_problems,
+    "skip": _string_list_problems,
+    "min-severity": _string_problems,
+    "check": _string_problems,
+    "git-window": _string_problems,
+    "commit-messages": _string_problems,
+    EXPECTED_COUPLING_KEY: _pair_list_problems,
+}
+
+VALID_KEYS = frozenset(_KEY_SHAPES) | {CATALOG_KEY}
+
+# String keys whose value must be one of a fixed set
+_ENUMERATED_VALUES = {
+    "min-severity": VALID_SEVERITIES,
+    "commit-messages": VALID_COMMIT_MESSAGES,
+}
 
 
 def _validate_config(config: dict, source: str, valid_check_names: set[str]) -> dict:
@@ -120,51 +157,17 @@ def _validate_config(config: dict, source: str, valid_check_names: set[str]) -> 
             f"Valid keys: {', '.join(sorted(VALID_KEYS))}"
         )
 
-    for key in LIST_KEYS:
-        if key in config and not isinstance(config[key], list):
-            raise ConfigError(f"{source}: '{key}' must be a list, got {type(config[key]).__name__}")
+    for key, shape_problems in _KEY_SHAPES.items():
         if key in config:
-            for item in config[key]:
-                if not isinstance(item, str):
-                    raise ConfigError(
-                        f"{source}: '{key}' items must be strings, got {type(item).__name__}"
-                    )
+            for problem in shape_problems(config[key]):
+                raise ConfigError(f"{source}: '{key}' {problem}")
 
-    for key in STRING_KEYS:
-        if key in config and not isinstance(config[key], str):
+    for key, valid_values in _ENUMERATED_VALUES.items():
+        if key in config and config[key] not in valid_values:
             raise ConfigError(
-                f"{source}: '{key}' must be a string, got {type(config[key]).__name__}"
+                f"{source}: invalid {key} '{config[key]}'. "
+                f"Valid values: {', '.join(sorted(valid_values))}"
             )
-
-    for key in BOOL_KEYS:
-        if key in config and not isinstance(config[key], bool):
-            raise ConfigError(
-                f"{source}: '{key}' must be a boolean, got {type(config[key]).__name__}"
-            )
-
-    for key in PAIR_LIST_KEYS:
-        if key in config:
-            if not isinstance(config[key], list):
-                raise ConfigError(
-                    f"{source}: '{key}' must be a list of pairs, got {type(config[key]).__name__}"
-                )
-            pair_length = 2
-            for i, item in enumerate(config[key]):
-                if not isinstance(item, list) or len(item) != pair_length:
-                    raise ConfigError(
-                        f"{source}: '{key}' items must be 2-element lists, "
-                        f"got {item!r} at index {i}"
-                    )
-                if not all(isinstance(s, str) for s in item):
-                    raise ConfigError(
-                        f"{source}: '{key}' items must contain strings, got {item!r} at index {i}"
-                    )
-
-    if "min-severity" in config and config["min-severity"] not in VALID_SEVERITIES:
-        raise ConfigError(
-            f"{source}: invalid min-severity '{config['min-severity']}'. "
-            f"Valid values: {', '.join(sorted(VALID_SEVERITIES))}"
-        )
 
     if "check" in config and config["check"] not in valid_check_names:
         raise ConfigError(
@@ -179,12 +182,6 @@ def _validate_config(config: dict, source: str, valid_check_names: set[str]) -> 
                 f"{source}: unknown check(s) in skip: {', '.join(bad)}. "
                 f"Use --list-checks to see available checks"
             )
-
-    if "commit-messages" in config and config["commit-messages"] not in VALID_COMMIT_MESSAGES:
-        raise ConfigError(
-            f"{source}: invalid commit-messages '{config['commit-messages']}'. "
-            f"Valid values: {', '.join(sorted(VALID_COMMIT_MESSAGES))}"
-        )
 
     if "git-window" in config and not _WINDOW_RE.match(config["git-window"]):
         raise ConfigError(
@@ -211,7 +208,7 @@ def _warn_parent_config(target_dir: Path) -> None:
     parent = target_dir.parent
     while parent != parent.parent:
         try:
-            found = _find_config_file(parent) is not None
+            found = (parent / DOTFILE).is_file() or _pyproject_table(parent) is not None
         except ConfigError:
             found = False
         if found:
@@ -227,39 +224,31 @@ def _warn_parent_config(target_dir: Path) -> None:
 def load_config(target_dir: Path, valid_check_names: set[str]) -> dict:
     """Find and load config from .pysmelly.toml or pyproject.toml.
 
+    First match wins: ``.pysmelly.toml``, then a pyproject.toml that has a
+    ``[tool.pysmelly]`` table.
+
     Returns:
         A dict with validated config keys (``catalog`` parsed into a
         ``Catalog``), or an empty dict when the directory has no pysmelly
         config.
 
-    Exits:
-        Status 1, with the message on stderr, when a config file exists but is
-        unparseable or invalid. Invalid config is never silently defaulted.
+    Raises:
+        ConfigError: when a config file exists but is unparseable or invalid.
+            Invalid config is never silently defaulted; the CLI turns the
+            error into exit status 1.
     """
-    try:
-        config_file = _find_config_file(target_dir)
-    except ConfigError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
-    if config_file is None:
-        _warn_parent_config(target_dir)
-        return {}
-
-    try:
-        data = tomllib.loads(config_file.read_text(encoding="utf-8"))
-    except tomllib.TOMLDecodeError as e:
-        print(f"Error: {config_file}: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    if config_file.name == PYPROJECT:
-        config = data.get("tool", {}).get("pysmelly", {})
-        source = f"{config_file} [tool.pysmelly]"
+    dotfile = target_dir / DOTFILE
+    if dotfile.is_file():
+        try:
+            config = tomllib.loads(dotfile.read_text(encoding="utf-8"))
+        except tomllib.TOMLDecodeError as e:
+            raise ConfigError(f"{dotfile}: {e}") from e
+        source = str(dotfile)
     else:
-        config = data
-        source = str(config_file)
+        config = _pyproject_table(target_dir)
+        if config is None:
+            _warn_parent_config(target_dir)
+            return {}
+        source = f"{target_dir / PYPROJECT} [tool.pysmelly]"
 
-    try:
-        return _validate_config(config, source, valid_check_names)
-    except ConfigError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+    return _validate_config(config, source, valid_check_names)

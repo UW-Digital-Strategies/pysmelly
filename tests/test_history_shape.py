@@ -27,7 +27,7 @@ def _when(days_ago: int) -> datetime:
 
 def _git(repo: Path, *args: str, env: dict[str, str] | None = None) -> str:
     result = subprocess.run(
-        ["git", *args], cwd=repo, env=env, capture_output=True, text=True, check=True
+        ["git", *args], cwd=repo, env=env, capture_output=True, encoding="utf-8", check=True
     )
     return result.stdout
 

@@ -101,9 +101,9 @@ def _git(repo: Path, *args: str) -> None:
 class TestHistoryInputs:
     def test_lifecycle_counts_creations_and_deletions_not_renames(self, git_repo):
         now = datetime.now(UTC)
-        (git_repo / "a.py").write_text("x = 0\n" * 20)
-        (git_repo / "b.py").write_text("y = 0\n")
-        (git_repo / "notes.txt").write_text("not python\n")
+        (git_repo / "a.py").write_text("x = 0\n" * 20, encoding="utf-8")
+        (git_repo / "b.py").write_text("y = 0\n", encoding="utf-8")
+        (git_repo / "notes.txt").write_text("not python\n", encoding="utf-8")
         _git(git_repo, "add", "a.py", "b.py", "notes.txt")
         _commit(git_repo, "feat: start", now - timedelta(days=30))
         _git(git_repo, "mv", "a.py", "moved.py")
@@ -135,7 +135,7 @@ class TestGitFailuresAreErrors:
 
     @pytest.fixture
     def history(self, git_repo):
-        (git_repo / "a.py").write_text("x = 0\n")
+        (git_repo / "a.py").write_text("x = 0\n", encoding="utf-8")
         _git(git_repo, "add", "a.py")
         _commit(git_repo, "feat: start", datetime.now(UTC) - timedelta(days=10))
         return GitHistory(git_repo, window="90d")

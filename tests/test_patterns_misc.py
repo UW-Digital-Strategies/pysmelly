@@ -235,6 +235,59 @@ port = os.getenv("PORT", "8080")
         assert len(findings) == 1
         assert "PORT" in findings[0].message
 
+    def test_message_names_the_getter_called(self, trees):
+        t = trees.code("""\
+import os
+port = os.getenv("K", fallback)
+""")
+        findings = check_env_fallbacks(t)
+        assert len(findings) == 1
+        assert findings[0].message == "os.getenv('K', fallback) has a fallback default"
+
+    def test_keyword_default_renders_like_positional(self, trees):
+        t = trees.code("""\
+import os
+a = os.environ.get("K", fallback)
+b = os.environ.get("K", default=fallback)
+""")
+        findings = check_env_fallbacks(t)
+        assert [f.message for f in findings] == [
+            "os.environ.get('K', fallback) has a fallback default",
+            "os.environ.get('K', fallback) has a fallback default",
+        ]
+
+    def test_keyword_none_default_ignored(self, trees):
+        t = trees.code("""\
+import os
+val = os.environ.get("KEY", default=None)
+""")
+        findings = check_env_fallbacks(t)
+        assert len(findings) == 0
+
+    def test_complex_default_renders_as_ellipsis(self, trees):
+        t = trees.code("""\
+import os
+val = os.environ.get("KEY", compute())
+""")
+        findings = check_env_fallbacks(t)
+        assert findings[0].message == "os.environ.get('KEY', ...) has a fallback default"
+
+    def test_ignores_getter_not_spelled_through_os(self, trees):
+        t = trees.code("""\
+from os import environ
+val = environ.get("K", 1)
+""")
+        findings = check_env_fallbacks(t)
+        assert len(findings) == 0
+
+    def test_ignores_non_literal_key(self, trees):
+        t = trees.code("""\
+import os
+val = os.environ.get(name, "x")
+""")
+        findings = check_env_fallbacks(t)
+        assert len(findings) == 0
+
     def test_ignores_none_default(self, trees):
         t = trees.code("""\
 import os

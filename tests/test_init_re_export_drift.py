@@ -61,7 +61,7 @@ class TestStaleReExport:
     def test_module_left_out_of_the_analysis_is_not_missing(self, tmp_path):
         """An excluded or untracked module still exists on disk."""
         (tmp_path / "pkg").mkdir()
-        (tmp_path / "pkg" / "generated.py").write_text("old = 1\n")
+        (tmp_path / "pkg" / "generated.py").write_text("old = 1\n", encoding="utf-8")
         files = {
             **_USED,
             "pkg/__init__.py": "from .impl import helper\nfrom .generated import old\n",

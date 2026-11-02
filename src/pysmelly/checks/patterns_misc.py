@@ -12,6 +12,7 @@ from typing import TypeGuard
 from pysmelly.checks.framework import is_migration_file
 from pysmelly.checks.helpers import (
     collect_imported_names,
+    dotted_name,
     enclosing_functions,
     get_param_names,
     is_bare_name,
@@ -352,59 +353,44 @@ def check_temp_accumulators(ctx: AnalysisContext) -> list[Finding]:
 # --- env-fallbacks ---
 
 
-def _get_env_call_key(node: ast.Call) -> str | None:
-    """Return the env var name if this is an os.environ.get() or os.getenv() call."""
-    # os.environ.get("KEY", ...)
-    if (
-        (
-            isinstance(node.func, ast.Attribute)
-            and node.func.attr == "get"
-            and isinstance(node.func.value, ast.Attribute)
-            and node.func.value.attr == "environ"
-            and isinstance(node.func.value.value, ast.Name)
-            and node.func.value.value.id == "os"
-        )
-        and node.args
-        and isinstance(node.args[0], ast.Constant)
-    ):
-        return str(node.args[0].value)
-    # os.getenv("KEY", ...)
-    if (
-        (
-            isinstance(node.func, ast.Attribute)
-            and node.func.attr == "getenv"
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id == "os"
-        )
-        and node.args
-        and isinstance(node.args[0], ast.Constant)
-    ):
-        return str(node.args[0].value)
-    return None
+# The calls that read an environment variable with an optional default, by the
+# dotted name the call site spells.
+_ENV_GETTERS = frozenset({"os.environ.get", "os.getenv"})
+
+
+def _get_env_call_key(node: ast.Call) -> tuple[str, str] | None:
+    """The getter's dotted name and the variable name, when *node* is an
+    environment read (``_ENV_GETTERS``) keyed by a literal; else None."""
+    getter = dotted_name(node.func)
+    if getter not in _ENV_GETTERS or not node.args:
+        return None
+    key = node.args[0]
+    if not isinstance(key, ast.Constant):
+        return None
+    return getter, str(key.value)
 
 
 def _get_env_default(node: ast.Call) -> str | None:
-    """Return repr of the default value if it's non-None, or None otherwise."""
-    # Second positional arg
+    """How the call's default reads in a finding, or None when it has no
+    default or the default is ``None``.
+
+    The default is the second positional argument or the ``default=`` keyword;
+    both render through one path, so the two spellings report alike.
+    """
     if len(node.args) >= 2:
-        default = node.args[1]
-        if isinstance(default, ast.Constant) and default.value is None:
+        default: ast.expr | None = node.args[1]
+    else:
+        default = next((kw.value for kw in node.keywords if kw.arg == "default"), None)
+    match default:
+        case None | ast.Constant(value=None):
             return None
-        if isinstance(default, ast.Constant):
-            return repr(default.value)
-        # Non-constant default (variable, call, etc.) — still suspicious
-        if isinstance(default, ast.Name):
-            return default.id
-        return "..."
-    # default= keyword arg
-    for kw in node.keywords:
-        if kw.arg == "default":
-            if isinstance(kw.value, ast.Constant) and kw.value.value is None:
-                return None
-            if isinstance(kw.value, ast.Constant):
-                return repr(kw.value.value)
+        case ast.Constant(value=value):
+            return repr(value)
+        case ast.Name(id=name):
+            return name
+        case _:
+            # A call, attribute or expression — still a fallback, unnamed.
             return "..."
-    return None
 
 
 @check(
@@ -435,9 +421,10 @@ def check_env_fallbacks(ctx: AnalysisContext) -> list[Finding]:
             if not isinstance(node, ast.Call):
                 continue
 
-            key_name = _get_env_call_key(node)
-            if key_name is None:
+            env_call = _get_env_call_key(node)
+            if env_call is None:
                 continue
+            getter, key_name = env_call
 
             # Check for non-None default
             default = _get_env_default(node)
@@ -449,7 +436,7 @@ def check_env_fallbacks(ctx: AnalysisContext) -> list[Finding]:
                     file=str(filepath),
                     line=node.lineno,
                     check="env-fallbacks",
-                    message=(f"os.environ.get('{key_name}', {default}) has a fallback default"),
+                    message=f"{getter}('{key_name}', {default}) has a fallback default",
                     severity=Severity.HIGH,
                 )
             )

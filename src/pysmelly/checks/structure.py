@@ -386,7 +386,7 @@ def check_duplicate_except_blocks(ctx: AnalysisContext) -> list[Finding]:
         # The overlap with _find_param_clumps is structural similarity between two
         # independent grouping loops over unrelated data, not extractable shared
         # logic — a common helper would have to take both shapes.
-        # re-evaluate-by: 2026-11
+        # re-evaluate-by: the second following PYSMELLY-REVIEW audit of this repo
         # pysmelly: ignore[duplicate-blocks]
         files = {h["file"] for h in handlers}
         if len(files) < 2:

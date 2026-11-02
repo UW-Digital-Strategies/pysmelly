@@ -64,7 +64,6 @@ def _git(repo: Path, *args: str, env: dict[str, str] | None = None) -> str:
         cwd=repo,
         capture_output=True,
         check=True,
-        text=True,
         encoding="utf-8",
         env=env,
     )

@@ -11,6 +11,8 @@ from pysmelly.checks.patterns_naming import (
     check_plaintext_passwords,
 )
 
+from .fixture_credentials import PASSWORD_LITERAL_COMPARISON
+
 
 def _first_expr(src: str) -> ast.expr:
     """The expression of the first statement in ``src``."""
@@ -249,9 +251,9 @@ if password is not None:
     def test_skips_test_files(self, trees):
         t = trees.files(
             {
-                "tests/test_auth.py": """\
+                "tests/test_auth.py": f"""\
 def test_check():
-    if password == "expected":
+    {PASSWORD_LITERAL_COMPARISON}
         pass
 """
             }

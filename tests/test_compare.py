@@ -28,12 +28,12 @@ print(used())
 
 def _git(repo: Path, *args: str) -> str:
     return subprocess.run(
-        ["git", *args], cwd=repo, capture_output=True, text=True, check=True
+        ["git", *args], cwd=repo, capture_output=True, encoding="utf-8", check=True
     ).stdout
 
 
 def _commit_app(repo: Path) -> None:
-    (repo / "app.py").write_text(APP)
+    (repo / "app.py").write_text(APP, encoding="utf-8")
     _git(repo, "add", "app.py")
     _git(repo, "commit", "-qm", "init")
 
@@ -76,7 +76,9 @@ def made_dirs(monkeypatch):
 
 class TestCompareDeltas:
     def test_improved_names_the_resolved_finding(self, repo, capsys, made_dirs):
-        (repo / "app.py").write_text(APP.replace("def unused_helper():\n    return 2\n", ""))
+        (repo / "app.py").write_text(
+            APP.replace("def unused_helper():\n    return 2\n", ""), encoding="utf-8"
+        )
         code, out, _ = _run(
             ["--no-context", "--check", "dead-code", "--compare", "HEAD", str(repo)], capsys
         )
@@ -91,7 +93,9 @@ class TestCompareDeltas:
         assert made_dirs and not any(d.exists() for d in made_dirs)
 
     def test_worsened_names_the_new_finding_and_exits_1(self, repo, capsys, made_dirs):
-        (repo / "app.py").write_text(APP + "\n\ndef another_unused():\n    return 3\n")
+        (repo / "app.py").write_text(
+            APP + "\n\ndef another_unused():\n    return 3\n", encoding="utf-8"
+        )
         code, out, _ = _run(
             ["--no-context", "--check", "dead-code", "--compare", "HEAD", str(repo)], capsys
         )
@@ -106,7 +110,9 @@ class TestCompareDeltas:
 
     def test_unchanged_when_only_lines_moved(self, repo, capsys):
         """Findings match on (check, file, definition): moving a finding's line is no change."""
-        (repo / "app.py").write_text('"""Docstring."""\n\nimport os\n\nprint(os.sep)\n\n\n' + APP)
+        (repo / "app.py").write_text(
+            '"""Docstring."""\n\nimport os\n\nprint(os.sep)\n\n\n' + APP, encoding="utf-8"
+        )
         code, out, _ = _run(
             ["--no-context", "--check", "dead-code", "--compare", "HEAD", str(repo)], capsys
         )
@@ -116,7 +122,9 @@ class TestCompareDeltas:
         assert "=== per check ===" not in out
 
     def test_summary_keeps_counts_and_drops_the_lists(self, repo, capsys):
-        (repo / "app.py").write_text(APP.replace("unused_helper", "renamed_unused"))
+        (repo / "app.py").write_text(
+            APP.replace("unused_helper", "renamed_unused"), encoding="utf-8"
+        )
         code, out, _ = _run(
             ["--no-context", "--check", "dead-code", "--summary", "--compare", "HEAD", str(repo)],
             capsys,
@@ -129,10 +137,12 @@ class TestCompareDeltas:
     def test_compares_a_subdirectory_target_at_ref(self, git_repo, capsys):
         pkg = git_repo / "pkg"
         pkg.mkdir()
-        (pkg / "mod.py").write_text(APP)
+        (pkg / "mod.py").write_text(APP, encoding="utf-8")
         _git(git_repo, "add", "pkg/mod.py")
         _git(git_repo, "commit", "-qm", "init")
-        (pkg / "mod.py").write_text(APP.replace("def unused_helper():\n    return 2\n", ""))
+        (pkg / "mod.py").write_text(
+            APP.replace("def unused_helper():\n    return 2\n", ""), encoding="utf-8"
+        )
         code, out, _ = _run(
             ["--no-context", "--check", "dead-code", "--compare", "HEAD", str(pkg)], capsys
         )
@@ -150,7 +160,7 @@ class TestCompareFailsFast:
         assert _worktrees(repo) == [f"worktree {repo.resolve()}"]
 
     def test_outside_a_git_repository(self, tmp_path, capsys):
-        (tmp_path / "app.py").write_text(APP)
+        (tmp_path / "app.py").write_text(APP, encoding="utf-8")
         code, _, err = _run(["--compare", "HEAD", str(tmp_path)], capsys)
         assert code == 1
         assert "--compare requires a git repository" in err
@@ -162,7 +172,7 @@ class TestCompareFailsFast:
 
     def test_target_missing_at_ref_cleans_up(self, repo, capsys, made_dirs):
         (repo / "later").mkdir()
-        (repo / "later" / "new.py").write_text("x = 1\n")
+        (repo / "later" / "new.py").write_text("x = 1\n", encoding="utf-8")
         code, _, err = _run(["--compare", "HEAD", str(repo / "later")], capsys)
         assert code == 1
         assert "later does not exist there" in err

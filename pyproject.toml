@@ -219,7 +219,7 @@ skips = [
     "B101", # pairs with ruff S101 ("tests/*" per-file-ignores; bandit excludes tests/ anyway)
     "B404", # pairs with ruff S404 (cli.py, git_history.py, discovery.py per-file-ignores)
     "B603", # pairs with ruff S603 (cli.py, git_history.py, discovery.py per-file-ignores)
-    "B607", # pairs with ruff S607 (cli.py, discovery.py per-file-ignores: git on PATH is intentional)
+    "B607", # pairs with ruff S607 (cli.py, git_history.py, discovery.py per-file-ignores: git on PATH)
     "B311", # pairs with ruff S311 (output.py per-file-ignores: random.choice for taglines)
 ]
 
@@ -227,6 +227,7 @@ skips = [
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "--strict-markers -ra --tb=short"
+filterwarnings = ["error"]
 
 [tool.coverage.run]
 source = ["src"]
@@ -242,7 +243,7 @@ exclude_lines = [
 # Ratchet: kept just under the measured total so a real regression fails the
 # gate instead of coasting under a decorative floor. Re-measure with
 # `make test-cov` before raising it.
-fail_under = 85
+fail_under = 93
 show_missing = true
 
 [tool.pysmelly]

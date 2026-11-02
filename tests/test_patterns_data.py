@@ -800,7 +800,7 @@ DEBUG = True
         t = trees.files(
             {
                 "config/settings/base.py": """\
-SECRET_KEY = "django-insecure-abc123"
+SECRET_KEY = 'x'
 INSTALLED_APPS = []
 """,
             }

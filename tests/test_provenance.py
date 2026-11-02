@@ -67,7 +67,7 @@ _JOB_NOT_READING = _JOB_READING.replace('    if flag:\n        print("verbose")\
 
 def _git(repo: Path, *args: str) -> str:
     result = subprocess.run(
-        ["git", *args], cwd=repo, capture_output=True, check=True, text=True, encoding="utf-8"
+        ["git", *args], cwd=repo, capture_output=True, check=True, encoding="utf-8"
     )
     return result.stdout.strip()
 
